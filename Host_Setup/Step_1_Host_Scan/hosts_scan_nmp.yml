@@ -1,0 +1,70 @@
+---
+- name: Network Host Scan using NMAP
+  hosts: localhost
+  become: "{{ ansible_become }}"
+  vars_files:
+      - secrets_hosts_scan.yml
+
+  tasks:
+      - name: Ensure nmap is installed
+        package:
+            name: nmap
+            state: present
+
+      - name: Run nmap scan on subnet
+        command: nmap -sn "{{ subnet }}"
+        register: nmap_result
+        changed_when: false
+
+      - name: Filter relevant output lines
+        set_fact:
+            filtered_output: "{{ nmap_result.stdout_lines | select('match', '^(Nmap scan report|MAC Address:)') | list }}"
+      - name: Extract IP and MAC addresses
+        set_fact:
+            ip_addresses: "{{ filtered_output | select('match', '^Nmap scan report') | list }}"
+            mac_addresses: "{{ filtered_output | select('match', '^MAC Address:') | list }}"
+
+      - name: Create a list of host entries
+        set_fact:
+            host_entries: []
+
+      - name: Combine IP and MAC addresses
+        set_fact:
+            host_entries: "{{ host_entries + [{'ip': ip_addresses[idx], 'mac': mac_addresses[idx] if idx < mac_addresses|length else 'No MAC address found'}] }}"
+        loop: "{{ range(0, ip_addresses|length)|list }}"
+        loop_control:
+            index_var: idx
+
+      - name: Create vlan_hosts directory if it doesn't exist
+        file:
+            path: "/home/vitto/UAI/Ansible/Host_Setup/vlan_hosts"
+            state: directory
+            mode: "0775"
+
+      - name: Extract VLAN from subnet
+        set_fact:
+            vlan_name: "vlan{{ subnet | regex_replace('^.*\\.([0-9]+)\\..*$', '\\1') }}"
+
+      - name: Clear previous file content
+        file:
+            path: "/home/vitto/UAI/Ansible/vlan_hosts/{{ vlan_name }}.ini"
+            state: absent
+
+      - name: Add inventory header to file
+        lineinfile:
+            path: "/home/vitto/UAI/Ansible/vlan_hosts/{{ vlan_name }}.ini"
+            line: "[ActiveHosts]"
+            create: yes
+            mode: "0664"
+
+      - name: Write host information to VLAN-specific file in INI format
+        lineinfile:
+            path: "/home/vitto/UAI/Ansible/vlan_hosts/{{ vlan_name }}.ini"
+            line: "{{ item.ip | regex_replace('^Nmap scan report for .*\\(([0-9.]+)\\).*$', '\\1') | regex_replace('^Nmap scan report for ([^(]*)$', '\\1') | trim }} mac={{ item.mac | regex_replace('^MAC Address: ([0-9A-F:]+)\\s*\\((.*)\\)', '\\1') | trim }} product=\"{{ item.mac | regex_replace('^MAC Address: ([0-9A-F:]+)\\s*\\((.*)\\)', '\\2') | default('Unknown') }}\""
+            mode: "0664"
+        loop: "{{ host_entries }}"
+        when: item.mac != 'No MAC address found'
+
+      - name: Display file location
+        debug:
+            msg: "Host inventory has been written to /home/vitto/UAI/Ansible/vlan_hosts/{{ vlan_name }}.ini"

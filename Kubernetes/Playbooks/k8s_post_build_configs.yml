@@ -9,6 +9,7 @@
       kubecolor_version: "0.5.1"
       kubecolor_deb_url: "https://github.com/kubecolor/kubecolor/releases/download/v{{ kubecolor_version }}/kubecolor_{{ kubecolor_version }}_linux_amd64.deb"
       kubecolor_deb_path: "/tmp/kubecolor_{{ kubecolor_version }}_linux_amd64.deb"
+
   tasks:
       - name: Ensure required packages are installed
         apt:
@@ -56,9 +57,7 @@
   vars:
       rook_ceph_namespace: rook-ceph
       max_attempts: 45
-      sleep_interval: 10
       delay_seconds: 10
-
       required_mon_pods: 3
       required_mgr_pods: 2
 
@@ -87,12 +86,6 @@
             dest: /root/rook-ceph/operator.yaml
             mode: "0644"
 
-      - name: Download Rook-Ceph cluster manifest
-        get_url:
-            url: https://raw.githubusercontent.com/rook/rook/master/deploy/examples/cluster.yaml
-            dest: /root/rook-ceph/cluster.yaml
-            mode: "0644"
-
       - name: Apply CRDs, common, and operator manifests
         shell: |
             kubectl apply -f /root/rook-ceph/crds.yaml
@@ -113,47 +106,59 @@
         until: rook_operator_check.rc == 0
         ignore_errors: false
 
+      - name: Get Kubernetes node hostnames
+        shell: kubectl get nodes -o jsonpath='{.items[*].metadata.name}'
+        register: kube_node_names
+        changed_when: false
+
+      - name: Set fact for rook_ceph_nodes
+        set_fact:
+            rook_ceph_nodes: "{{ kube_node_names.stdout.split() }}"
+
+      - name: Render rook-ceph cluster.yaml from template
+        template:
+            src: ../Templates/cluster.yaml.j2
+            dest: /root/rook-ceph/cluster.yaml
+            mode: "0644"
+
       - name: Apply Rook-Ceph cluster manifest
         shell: kubectl apply -f /root/rook-ceph/cluster.yaml
 
-      - name: Wait for rook-ceph cluster to become ready (mgr + mon pods Running)
+      - name: Wait for rook-ceph mgr + mon pods to reach Running state
+        shell: |
+            mgr_count=$(kubectl get pods -n {{ rook_ceph_namespace }} -l app=rook-ceph-mgr --no-headers | grep -c 'Running')
+            mon_count=$(kubectl get pods -n {{ rook_ceph_namespace }} -l app=rook-ceph-mon --no-headers | grep -c 'Running')
+            echo "mgr_ready=$mgr_count"
+            echo "mon_ready=$mon_count"
+            if [ "$mgr_count" -ge {{ required_mgr_pods }} ] && [ "$mon_count" -ge {{ required_mon_pods }} ]; then
+              exit 0
+            else
+              exit 1
+            fi
+        register: ceph_ready_check
+        retries: "{{ max_attempts }}"
+        delay: "{{ delay_seconds }}"
+        until: ceph_ready_check.rc == 0
+        changed_when: false
 
-        block:
-            - name: Wait for rook-ceph mgr + mon pods to reach Running state
-              shell: |
-                  mgr_count=$(kubectl get pods -n {{ rook_ceph_namespace }} -l app=rook-ceph-mgr --no-headers | grep -c 'Running')
-                  mon_count=$(kubectl get pods -n {{ rook_ceph_namespace }} -l app=rook-ceph-mon --no-headers | grep -c 'Running')
-                  echo "mgr_ready=$mgr_count"
-                  echo "mon_ready=$mon_count"
-                  if [ "$mgr_count" -ge {{ required_mgr_pods }} ] && [ "$mon_count" -ge {{ required_mon_pods }} ]; then
-                    exit 0
-                  else
-                    exit 1
-                  fi
-              register: ceph_ready_check
-              retries: "{{ max_attempts }}"
-              delay: "{{ delay_seconds }}"
-              until: ceph_ready_check.rc == 0
-              changed_when: false
+      - name: Report rook-ceph cluster readiness
+        debug:
+            msg: "Rook-Ceph cluster is ready: mgr and mon pods are Running."
 
-            - name: Report rook-ceph cluster readiness
-              debug:
-                  msg: "Rook-Ceph cluster is ready: mgr and mon pods are Running."
+      - name: Download Rook-Ceph storageclass manifest
+        get_url:
+            url: https://raw.githubusercontent.com/rook/rook/master/deploy/examples/csi/rbd/storageclass.yaml
+            dest: /root/rook-ceph/storageclass.yaml
+            mode: "0644"
 
-            - name: Download Rook-Ceph storageclass manifest
-              get_url:
-                  url: https://raw.githubusercontent.com/rook/rook/master/deploy/examples/csi/rbd/storageclass.yaml
-                  dest: /root/rook-ceph/storageclass.yaml
-                  mode: "0644"
+      - name: Set rook-ceph storageclass as default
+        replace:
+            path: /root/rook-ceph/storageclass.yaml
+            regexp: '^metadata:\s*$'
+            replace: |
+                metadata:
+                  annotations:
+                    storageclass.kubernetes.io/is-default-class: "true"
 
-            - name: Set rook-ceph storageclass as default
-              replace:
-                  path: /root/rook-ceph/storageclass.yaml
-                  regexp: '^metadata:\s*$'
-                  replace: |
-                      metadata:
-                        annotations:
-                          storageclass.kubernetes.io/is-default-class: "true"
-
-            - name: Apply rook-ceph default storageclass
-              shell: kubectl apply -f /root/rook-ceph/storageclass.yaml
+      - name: Apply rook-ceph default storageclass
+        shell: kubectl apply -f /root/rook-ceph/storageclass.yaml

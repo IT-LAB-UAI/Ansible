@@ -1,0 +1,37 @@
+---
+- name: Generate translated inventory file for VLAN
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+      target_vlan: Vlan2
+      translations_file: "Translations/{{ target_vlan }}/current_translation.yml"
+      inventory_output: "../../Inventories/{{ target_vlan }}translation_inventory.ini"
+
+  vars_files:
+      - "{{ translations_file }}"
+
+  tasks:
+      - name: Build translated inventory content
+        set_fact:
+            generated_inventory: |
+                [{{ target_vlan }}_translated]
+                {% for item in Mappings %}
+                {{ item.IP }} hostname={{ item.Hostname }} mac={{ item.MAC }}
+                {% endfor %}
+
+      - name: Ensure Inventories directory exists
+        file:
+            path: "{{ inventory_output | dirname }}"
+            state: directory
+            mode: "0755"
+
+      - name: Write translated inventory to file
+        copy:
+            content: "{{ generated_inventory }}"
+            dest: "{{ inventory_output }}"
+            mode: "0644"
+
+      - name: Show location of generated inventory
+        debug:
+            msg: "Inventory saved to {{ inventory_output }}"

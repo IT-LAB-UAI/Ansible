@@ -3,10 +3,10 @@
   gather_facts: false
 
   vars:
-      source_vlan_id: 3
-      destination_vlan_id: 3
+      source_vlan_id: 2
+      destination_vlan_id: 2
 
-      scan_file: "../Step_1_Host_Scan/vlans_hosts/vlan{{ source_vlan_id }}_active_hosts.ini"
+      scan_file: "../../vlan_hosts/vlan{{ source_vlan_id }}.ini"
       context_file: "Networks_Context/Vlan{{ destination_vlan_id }}/context.yml"
       translation_output: "Translations/Vlan{{ destination_vlan_id }}/current_translation.yml"
       history_file: "Translations/Vlan{{ destination_vlan_id }}/history_registry.yml"

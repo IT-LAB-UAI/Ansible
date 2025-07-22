@@ -11,15 +11,14 @@
   tasks:
       - name: Disable swap
         command: /sbin/swapoff -a
-        become: yes
-        become_user: root
 
-      - name: Ensure parted is installed
+      - name: Ensure parted and util linux is installed
         apt:
-            name: parted
+            name:
+                - parted
+                - util-linux
             state: present
             update_cache: yes
-        become: yes
 
       - name: Get partition information
         parted:
@@ -43,7 +42,6 @@
             device: /dev/nvme0n1
             number: "{{ swap_partition.num }}"
             state: absent
-        become: yes
         when: swap_find_result.results | selectattr('ansible_facts', 'defined') | list | length > 0
 
       - name: Remove swap entry from fstab
@@ -51,14 +49,12 @@
             path: /etc/fstab
             regexp: ".*swap.*"
             state: absent
-        become: yes
 
       - name: Remove extended partition if it exists
         parted:
             device: /dev/nvme0n1
             number: 2
             state: absent
-        become: yes
         ignore_errors: yes
         register: extended_removed
 
@@ -67,7 +63,6 @@
             device: /dev/nvme0n1
             number: 5
             state: absent
-        become: yes
         ignore_errors: yes
         register: logical_removed
 
@@ -82,3 +77,28 @@
         debug:
             var: updated_disk_info.partitions
         when: extended_removed is defined and not extended_removed.failed and updated_disk_info is defined
+
+      - name: Get updated partition information for free space analysis
+        parted:
+            device: /dev/nvme0n1
+            unit: MiB
+        register: free_space_info
+
+      - name: Determine start point for new partition
+        set_fact:
+            new_partition_start: "{{ free_space_info.partitions | map(attribute='end') | max | float | round + 1 }}"
+
+      - name: Create new primary partition with remaining space
+        parted:
+            device: /dev/nvme0n1
+            number: 2
+            state: present
+            part_type: primary
+            unit: MiB
+            part_start: "{{ new_partition_start | string }}MiB"
+            part_end: "100%"
+        become: yes
+
+      - name: Wipe old filesystem signatures from the new partition
+        shell: /usr/sbin/wipefs --all /dev/nvme0n1p2
+        become: yes
