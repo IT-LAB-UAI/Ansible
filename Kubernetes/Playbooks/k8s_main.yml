@@ -1,9 +1,18 @@
 ---
+# Prebuild Setup
+- name: Set up Host Keys
+  import_playbook: Pre_Build_Setup/k8s_known_hosts.yml
+
+# Cluster Build
 - name: Set up Kubernetes dependencies
-  import_playbook: k8s_dependencies_setup.yml
+  import_playbook: Cluster_Build/k8s_dependencies_setup.yml
 
 - name: Build Kubernetes environment
-  import_playbook: k8s_build_setup.yml
+  import_playbook: Cluster_Build/k8s_build_setup.yml
 
-- name: Configure Kubernetes post-build settings
-  import_playbook: k8s_post_build_configs.yml
+# Post Build Configurations
+- name: Configure Kubecolor
+  import_playbook: Post_Build_Configs/k8s_kubecolor.yml
+
+- name: Create Rook-Ceph Cluster (VM Mode)
+  import_playbook: Post_Build_Configs/k8s_vm_rook_ceph_csi.yml

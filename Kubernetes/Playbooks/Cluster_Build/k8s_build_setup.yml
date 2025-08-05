@@ -4,7 +4,7 @@
   become: true
   gather_facts: yes
   vars_files:
-      - secrets_k8s.yml
+      - ../secrets_k8s.yml
   tasks:
       - name: Set full list of control planes
         set_fact:
@@ -37,7 +37,7 @@
 
       - name: Deploy HAProxy config
         template:
-            src: ../Templates/haproxy.cfg.j2
+            src: ../../Templates/haproxy.cfg.j2
             dest: /etc/haproxy/haproxy.cfg
             owner: root
             group: root
@@ -57,7 +57,7 @@
 
       - name: Deploy Keepalived config
         template:
-            src: ../Templates/keepalived.cfg.j2
+            src: ../../Templates/keepalived.cfg.j2
             dest: /etc/keepalived/keepalived.conf
             owner: root
             group: root
@@ -80,7 +80,7 @@
   hosts: main_control_plane
   become: true
   vars_files:
-      - secrets_k8s.yml
+      - ../secrets_k8s.yml
   vars:
       pod_network_cidr: "{{ pod_network_cidr }}"
       control_plane_endpoint: "{{ vip_address }}"
@@ -167,7 +167,7 @@
   hosts: control_plane
   become: true
   vars_files:
-      - secrets_k8s.yml
+      - ../secrets_k8s.yml
   vars:
       kubeadm_join_control_plane: "{{ hostvars[groups['main_control_plane'][0]]['kubeadm_join_control_plane'] }}"
 
@@ -181,7 +181,7 @@
   hosts: control_plane
   become: true
   vars_files:
-      - secrets_k8s.yml
+      - ../secrets_k8s.yml
   vars:
       kubeconfig_path: /root/.kube/config
 
@@ -218,7 +218,7 @@
   hosts: workers
   become: true
   vars_files:
-      - secrets_k8s.yml
+      - ../secrets_k8s.yml
   vars:
       kubeadm_join_worker: "{{ hostvars[groups['main_control_plane'][0]]['kubeadm_join_worker'] }}"
 

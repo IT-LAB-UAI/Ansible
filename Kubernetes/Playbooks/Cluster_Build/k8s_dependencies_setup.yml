@@ -1,25 +1,9 @@
 ---
-- name: Ensure known_hosts is clean and updated
-  hosts: localhost
-  gather_facts: false
-  tasks:
-      - name: Remove existing SSH key from known_hosts (if present)
-        ansible.builtin.shell: ssh-keygen -R {{ hostvars[item].ansible_host | default(item) }} || true
-        args:
-            executable: /bin/bash
-        loop: "{{ groups['main_control_plane'] + groups['control_plane'] + groups['workers'] }}"
-
-      - name: Add current host key to known_hosts
-        ansible.builtin.shell: ssh-keyscan {{ hostvars[item].ansible_host | default(item) }} >> ~/.ssh/known_hosts
-        args:
-            executable: /bin/bash
-        loop: "{{ groups['main_control_plane'] + groups['control_plane'] + groups['workers'] }}"
-
 - name: Kubernetes Node Dependency Setup
   hosts: all
   become: true
   vars_files:
-      - secrets_k8s.yml
+      - ../secrets_k8s.yml
   tasks:
       - name: Set hostname using hostnamectl
         command: hostnamectl set-hostname {{ inventory_hostname }}
