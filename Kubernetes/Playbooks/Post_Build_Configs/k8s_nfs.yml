@@ -1,0 +1,90 @@
+---
+- name: Configure NFS server
+  hosts: main_control_plane
+  become: yes
+  vars_files:
+      - ../secrets_k8s.yml
+  vars:
+      nfs_shared_dir: /srv/k8s-share
+
+  tasks:
+      - name: Install NFS server packages
+        apt:
+            name: nfs-kernel-server
+            state: present
+            update_cache: yes
+
+      - name: Create shared directory
+        file:
+            path: "{{ nfs_shared_dir }}"
+            state: directory
+            owner: nobody
+            group: nogroup
+            mode: "0777"
+
+      - name: Gather IPs of all control_plane clients
+        set_fact:
+            nfs_client_ips: "{{ groups['control_plane'] | map('extract', hostvars, ['ansible_host']) | list }}"
+
+      - name: Configure NFS exports dynamically
+        blockinfile:
+            path: /etc/exports
+            marker: "# {mark} ANSIBLE MANAGED NFS EXPORT"
+            block: >
+                {{ nfs_shared_dir }}
+                {% for ip in nfs_client_ips %}
+                {{ ip }}(rw,sync,no_subtree_check)
+                {% endfor %}
+
+      - name: Export NFS shares
+        command: exportfs -ra
+
+      - name: Enable and start NFS service
+        systemd:
+            name: nfs-server
+            enabled: yes
+            state: started
+
+- name: Configure NFS clients
+  hosts: control_plane
+  become: yes
+  vars_files:
+      - ../secrets_k8s.yml
+  vars:
+      nfs_shared_dir: /srv/k8s-share
+      nfs_mount_point: /mnt/k8s-share
+
+  tasks:
+      - name: Install NFS client packages
+        apt:
+            name: nfs-common
+            state: present
+            update_cache: yes
+
+      - name: Create mount point
+        file:
+            path: "{{ nfs_mount_point }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+
+      - name: Get NFS server IP from main_control_plane
+        set_fact:
+            nfs_server_ip: "{{ hostvars[groups['main_control_plane'][0]].ansible_host }}"
+
+      - name: Mount NFS share
+        mount:
+            src: "{{ nfs_server_ip }}:{{ nfs_shared_dir }}"
+            path: "{{ nfs_mount_point }}"
+            fstype: nfs
+            opts: defaults
+            state: mounted
+
+      - name: Ensure mount persists in fstab
+        mount:
+            src: "{{ nfs_server_ip }}:{{ nfs_shared_dir }}"
+            path: "{{ nfs_mount_point }}"
+            fstype: nfs
+            opts: defaults
+            state: present
