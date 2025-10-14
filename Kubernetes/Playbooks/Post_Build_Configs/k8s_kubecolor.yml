@@ -9,7 +9,6 @@
       kubecolor_version: "0.5.1"
       kubecolor_deb_url: "https://github.com/kubecolor/kubecolor/releases/download/v{{ kubecolor_version }}/kubecolor_{{ kubecolor_version }}_linux_amd64.deb"
       kubecolor_deb_path: "/tmp/kubecolor_{{ kubecolor_version }}_linux_amd64.deb"
-
   tasks:
       - name: Ensure required packages are installed
         apt:
@@ -19,30 +18,43 @@
                 - bash-completion
             state: present
             update_cache: yes
-
+            
       - name: Download kubecolor .deb package
         get_url:
             url: "{{ kubecolor_deb_url }}"
             dest: "{{ kubecolor_deb_path }}"
             mode: "0644"
-
+            
       - name: Install kubecolor from .deb package
         apt:
             deb: "{{ kubecolor_deb_path }}"
             state: present
-
+            
       - name: Rename kubecolor binary to hidden file
         command: mv /usr/bin/kubecolor /usr/bin/.kubecolor
         args:
             creates: /usr/bin/.kubecolor
-
+            
+      - name: Generate kubectl completion script
+        shell: kubectl completion bash > /etc/bash_completion.d/kubectl
+        args:
+            creates: /etc/bash_completion.d/kubectl
+            
       - name: Alias kubectl to hidden kubecolor binary and enable autocompletion
         blockinfile:
             path: /root/.bashrc
             create: yes
+            marker: "# {mark} ANSIBLE MANAGED BLOCK - kubecolor"
             block: |
+                # Load bash completion
+                if [ -f /usr/share/bash-completion/bash_completion ]; then
+                    . /usr/share/bash-completion/bash_completion
+                elif [ -f /etc/bash_completion ]; then
+                    . /etc/bash_completion
+                fi
+                
                 # Use hidden kubecolor binary for kubectl
                 alias kubectl='/usr/bin/.kubecolor'
-
-                # Load kubectl autocompletion
-                source <(kubectl completion bash)
+                
+                # Enable kubectl autocompletion for the alias
+                complete -o default -F __start_kubectl kubectl
