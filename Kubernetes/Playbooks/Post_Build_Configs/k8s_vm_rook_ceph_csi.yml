@@ -6,7 +6,6 @@
   vars_files:
     - ../secrets_k8s.yml
   vars:
-    rook_version: "v1.15.6" # Define version here
     rook_ceph_namespace: rook-ceph
     max_attempts: 45
     delay_seconds: 10
@@ -19,35 +18,52 @@
         state: directory
         mode: "0755"
 
-    - name: Download Rook-Ceph CRDs manifest
-      get_url:
-        url: "https://raw.githubusercontent.com/rook/rook/{{ rook_version }}/deploy/examples/crds.yaml"
+    - name: Copy local Rook-Ceph CRDs manifest to remote host
+      copy:
+        src: rook-ceph-configs/crds.yaml
         dest: /root/rook-ceph/crds.yaml
+        owner: root
+        group: root
         mode: "0644"
 
-    - name: Download Rook-Ceph common manifest
-      get_url:
-        url: "https://raw.githubusercontent.com/rook/rook/{{ rook_version }}/deploy/examples/common.yaml"
+    - name: Copy local Rook-Ceph common manifest to remote host
+      copy:
+        src: rook-ceph-configs/common.yaml
         dest: /root/rook-ceph/common.yaml
+        owner: root
+        group: root
         mode: "0644"
 
-    - name: Download Rook-Ceph operator manifest
-      get_url:
-        url: "https://raw.githubusercontent.com/rook/rook/{{ rook_version }}/deploy/examples/operator.yaml"
+    - name: Copy local Rook-Ceph operator manifest to remote host
+      copy:
+        src: rook-ceph-configs/operator.yaml
         dest: /root/rook-ceph/operator.yaml
+        owner: root
+        group: root
         mode: "0644"
 
-    - name: Download Rook-Ceph cluster manifest
-      get_url:
-        url: "https://raw.githubusercontent.com/rook/rook/{{ rook_version }}/deploy/examples/cluster.yaml"
+    - name: Copy local Rook-Ceph CSI operator manifest to remote host
+      copy:
+        src: rook-ceph-configs/csi-operator.yaml
+        dest: /root/rook-ceph/csi-operator.yaml
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Copy local Rook-Ceph cluster manifest to remote host
+      copy:
+        src: rook-ceph-configs/cluster.yaml
         dest: /root/rook-ceph/cluster.yaml
+        owner: root
+        group: root
         mode: "0644"
 
-    - name: Apply CRDs, common, and operator manifests
+    - name: Apply CRDs, common, operator, and CSI operator manifests
       shell: |
         kubectl apply -f /root/rook-ceph/crds.yaml
         kubectl apply -f /root/rook-ceph/common.yaml
         kubectl apply -f /root/rook-ceph/operator.yaml
+        kubectl apply -f /root/rook-ceph/csi-operator.yaml
       args:
         executable: /bin/bash
 
@@ -87,10 +103,12 @@
       debug:
         msg: "Rook-Ceph cluster is ready: mgr and mon pods are Running."
 
-    - name: Download Rook-Ceph storageclass manifest
-      get_url:
-        url: https://raw.githubusercontent.com/rook/rook/master/deploy/examples/csi/rbd/storageclass.yaml
+    - name: Copy local Rook-Ceph storageclass manifest to remote host
+      copy:
+        src: rook-ceph-configs/storageclass.yaml
         dest: /root/rook-ceph/storageclass.yaml
+        owner: root
+        group: root
         mode: "0644"
 
     - name: Set rook-ceph storageclass as default
